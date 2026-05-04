@@ -723,18 +723,20 @@ instance Pretty Expression where
   pretty (Let let_ binders Ann{preTrivia, value = in_, trailComment} expr) =
     letPart <> hardline <> inPart
     where
-      -- Convert the TrailingComment to a Trivium, if present
-      convertTrailing Nothing = []
-      convertTrailing (Just (TrailingComment t)) = [LineComment (" " <> t)]
-
       letPart = group $ pretty let_ <> hardline <> letBody
       letBody = nest $ renderItems True hardline binders
+      -- Attach the `in` comments to the body's first token so layout
+      -- decisions match pass 2, where they re-lex there anyway.
+      inTrivia = preTrivia <> maybe Seq.empty (Seq.singleton . toLineComment) trailComment
+      expr' =
+        mapFirstToken
+          (\a@Ann{preTrivia = pre'} -> a{preTrivia = inTrivia <> pre'})
+          expr
       inPart =
         group $
           pretty in_
             <> hardline
-            <> pretty (preTrivia <> convertTrailing trailComment)
-            <> pretty expr
+            <> pretty expr'
   pretty (Assert assert cond semicolon expr) =
     group $
       -- Render the assert as if it is was just a function (literally)
