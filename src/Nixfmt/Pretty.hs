@@ -494,10 +494,18 @@ prettyApp indentFunction pre hasPost f a =
       absorbLast arg = group' RegularG $ nest $ pretty arg
 
       -- Extract comment before the first function and move it out, to prevent functions being force-expanded
-      (fWithoutComment, comment') =
-        mapFirstToken'
-          ((\a'@Ann{preTrivia} -> (a'{preTrivia = []}, preTrivia)) . moveTrailingCommentUp)
-          f
+      (fWithoutComment, comment') = case extracted of
+        -- A lone language annotation renders inline (`/* sh */ "…"`) with no
+        -- leading separator, so hoisting it would place it directly after the
+        -- caller's preceding token (e.g. `a //* sh */ …`, which re-lexes as
+        -- the `//` operator). Leave it on the term so `pre` lands before it.
+        (_, [LanguageAnnotation _]) -> (f, [])
+        _ -> extracted
+        where
+          extracted =
+            mapFirstToken'
+              ((\a'@Ann{preTrivia} -> (a'{preTrivia = []}, preTrivia)) . moveTrailingCommentUp)
+              f
 
       -- renderSimple will take a document to render, and call one of two callbacks depending on whether
       -- it can take a simplified layout (with removed line breaks) or not.
