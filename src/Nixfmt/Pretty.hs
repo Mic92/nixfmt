@@ -627,7 +627,9 @@ isAbsorbable (List paropen items _)
   | hasTrivia paropen || hasOnlyComments items = True
 isAbsorbable (Set _ paropen items _)
   | hasTrivia paropen || hasOnlyComments items = True
-isAbsorbable (Parenthesized (LoneAnn _) (Term t) _) = isAbsorbable t
+-- `(` trivia is hoisted before the paren and never affects whether the body
+-- absorbs; matching only `LoneAnn` here flipped this between passes.
+isAbsorbable (Parenthesized _ (Term t) _) = isAbsorbable t
 isAbsorbable _ = False
 
 isAbsorbableTerm :: Term -> Bool
