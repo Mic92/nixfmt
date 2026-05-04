@@ -17,6 +17,7 @@ import Data.Char (isAlpha)
 import Data.Foldable (toList)
 import Data.Functor (($>))
 import Data.Maybe (fromMaybe, mapMaybe, maybeToList)
+import qualified Data.Sequence as Seq
 import Data.Text (Text, elem, isPrefixOf, pack)
 import qualified Data.Text as Text
 import Data.Void (Void)
@@ -41,7 +42,9 @@ import Nixfmt.Types (
   StringPart (..),
   Term (..),
   Token (..),
+  Trivium (..),
   Whole (..),
+  mapFirstToken,
   operators,
   tokenText,
  )
@@ -590,4 +593,11 @@ expression =
       <|> assert
 
 file :: Parsec Void Text File
-file = whole (expression <* eof)
+file = stripLeadingBlanks <$> whole (expression <* eof)
+  where
+    -- Leading blank lines never reach the output but make isSimple false on
+    -- the first term, so prettyApp picks a different layout on pass 2 once
+    -- the renderer has trimmed them. Only the file's first token; `whole` is
+    -- also used for interpolations, where leading blanks are preserved.
+    stripLeadingBlanks (Whole e t) =
+      Whole (mapFirstToken (\a -> a{preTrivia = Seq.dropWhileL (== EmptyLine) (preTrivia a)}) e) t
