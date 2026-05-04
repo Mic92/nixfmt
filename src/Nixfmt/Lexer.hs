@@ -191,8 +191,8 @@ isTrailing (PTBlockComment False []) = True
 isTrailing (PTBlockComment False [_]) = True
 isTrailing _ = False
 
-convertTrivia :: [ParseTrivium] -> Pos -> (Maybe TrailingComment, Trivia)
-convertTrivia pts nextCol =
+convertTrivia :: [ParseTrivium] -> Bool -> Pos -> (Maybe TrailingComment, Trivia)
+convertTrivia pts prevMultiline nextCol =
   let (trailing, leading) = span isTrailing pts
   in case (trailing, leading) of
       -- Special case: if the trailing comment visually forms a block with the start of the following line,
@@ -200,7 +200,12 @@ convertTrivia pts nextCol =
       -- This happens especially often after `{` or `[` tokens, where the comment of the first item
       -- starts on the same line ase the opening token.
       ([PTLineComment _ pos], (PTNewlines 1) : (PTLineComment _ pos') : _) | pos == pos' -> (Nothing, convertLeading pts)
-      ([PTLineComment _ pos], [PTNewlines 1]) | pos == nextCol -> (Nothing, convertLeading pts)
+      -- Suppress this heuristic when the preceding token spans multiple lines
+      -- (e.g. a `"…"` literal with embedded newlines): its closing delimiter
+      -- can sit left of the next token's column, so the comment is genuinely
+      -- trailing even though `pos == nextCol`. Reattaching it makes formatting
+      -- non-idempotent because the printer keeps emitting it as trailing.
+      ([PTLineComment _ pos], [PTNewlines 1]) | not prevMultiline && pos == nextCol -> (Nothing, convertLeading pts)
       _ -> (convertTrailing trailing, convertLeading leading)
 
 trivia :: Parser [ParseTrivium]
@@ -220,10 +225,11 @@ lexeme p = do
   lastLeading <- takeTrivia
   SourcePos{Text.Megaparsec.sourceLine = line} <- getSourcePos
   token <- preLexeme p
+  SourcePos{Text.Megaparsec.sourceLine = endLine} <- getSourcePos
   parsedTrivia <- trivia
   -- This is the position of the next lexeme after the currently parsed one
   SourcePos{sourceColumn = col} <- getSourcePos
-  let (trailing, nextLeading) = convertTrivia parsedTrivia col
+  let (trailing, nextLeading) = convertTrivia parsedTrivia (endLine > line) col
   pushTrivia nextLeading
   pure $!
     Ann
